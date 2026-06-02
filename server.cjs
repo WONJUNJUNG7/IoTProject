@@ -1,8 +1,6 @@
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
-let SerialPort;
-let ReadlineParser;
 
 const app = express();
 const server = http.createServer(app);
@@ -56,11 +54,7 @@ app.get('/api/stats', (req, res) => {
 });
 
 const PORT = 4000;
-const ARDUINO_PORT = 'COM3';
-const BAUD_RATE = 9600;
 
-let serialPort;
-let parser;
 let dummyInterval;
 // 런타임 통계와 로그(메모리 저장)
 const stats = {
@@ -74,56 +68,78 @@ let speedLogs = [];
 let eventLogs = [];
 let lastMeasuredSpeed = 0;
 
-// 시리얼 포트 연결 시도
-function connectSerialPort() {
+// ESP32의 데이터를 수신하는 HTTP POST 엔드포인트
+app.post('/api/esp32-data', (req, res) => {
   try {
-    // serialport가 설치되어 있지 않으면 require에서 에러가 발생하므로 안전히 처리
-    try {
-      SerialPort = require('serialport');
-      ReadlineParser = require('@serialport/parser-readline').ReadlineParser;
-    } catch (e) {
-      console.warn('serialport 모듈을 로드할 수 없습니다. 더미 데이터로 동작합니다.');
-      startDummyData();
-      return;
+    const { speed, shock, temperature, humidity } = req.body;
+    
+    // 유효성 검사
+    if (speed === undefined || shock === undefined || temperature === undefined || humidity === undefined) {
+      return res.status(400).json({ error: 'Missing sensor data' });
     }
 
-    serialPort = new SerialPort.SerialPort({
-      path: ARDUINO_PORT,
-      baudRate: BAUD_RATE
-    });
+    // 데이터 포맷 변환 (기존 형식으로 통일)
+    const formattedData = `SPEED:${speed},SHOCK:${shock},TEMP:${temperature},HUMI:${humidity}`;
+    
+    console.log('ESP32 data received:', formattedData);
+    
+    // 클라이언트에 실시간 데이터 전송
+    io.emit('arduino-data', formattedData);
+    
+    // 상태 업데이트
+    lastMeasuredSpeed = speed;
+    
+    // 차량 감지: speed > 0으로 간주
+    if (speed > 0) {
+      stats.todayDetected += 1;
+      
+      // speedLog 추가
+      const speedLog = {
+        id: `SPD-${Date.now()}`,
+        detectedAt: new Date().toISOString(),
+        location: 'ESP32 센서',
+        measuredSpeed: speed,
+        speedLimit: 30,
+        judgment: speed > 30 ? '과속' : speed > 20 ? '주의' : '정상',
+        bumpAction: speed > 30 ? '경고 발생' : '유지',
+      };
+      speedLogs.unshift(speedLog);
+      if (speedLogs.length > 100) speedLogs.pop();
 
-    parser = serialPort.pipe(new ReadlineParser({ delimiter: '\r\n' }));
+      // 과속 감지 시 이벤트 로그 추가
+      if (speed > 30) {
+        stats.overSpeed += 1;
+        const evt = {
+          id: `EVT-${Date.now()}`,
+          occurredAt: new Date().toISOString(),
+          deviceId: 'BUMP-001',
+          location: 'ESP32 센서',
+          eventType: '과속 감지',
+          severity: '높음',
+          status: '미확인',
+        };
+        eventLogs.unshift(evt);
+        if (eventLogs.length > 100) eventLogs.pop();
+      }
+    }
 
-    serialPort.on('open', () => {
-      console.log(`Serial port ${ARDUINO_PORT} connected at ${BAUD_RATE} baud`);
-    });
-
-    parser.on('data', (data) => {
-      console.log('Arduino data received:', data);
-      io.emit('arduino-data', data);
-    });
-
-    serialPort.on('error', (err) => {
-      console.error('Serial port error:', err.message);
-      startDummyData();
-    });
-
-    serialPort.on('close', () => {
-      console.log('Serial port closed');
-      startDummyData();
-    });
+    // stats 업데이트 이벤트 전송
+    io.emit('stats-update', stats);
+    
+    res.json({ success: true, message: 'Data received successfully' });
   } catch (err) {
-    console.error('Failed to connect serial port:', err.message);
-    startDummyData();
+    console.error('Error processing ESP32 data:', err.message);
+    res.status(500).json({ error: 'Failed to process data' });
   }
-}
+});
 
-// 더미 데이터 생성 (5초마다) 및 stats/logs 갱신
+// 더미 데이터 생성 함수 (선택적 - 개발/테스트용)
+// 필요하면 startDummyData()를 호출하여 활성화 가능
 function startDummyData() {
   if (dummyInterval) return;
 
-  console.log('Starting dummy data generation...');
-  const intervalMs = 5000; // 더 긴 지연
+  console.log('Starting dummy data generation for testing...');
+  const intervalMs = 5000; // 5초마다
   dummyInterval = setInterval(() => {
     const speed = Math.floor(Math.random() * 100); // 0-99
     const shock = Math.floor(Math.random() * 50);
@@ -133,10 +149,8 @@ function startDummyData() {
 
     // 상태 업데이트
     lastMeasuredSpeed = speed;
-    // 차량 감지: speed > 0으로 간주
     if (speed > 0) {
       stats.todayDetected += 1;
-      // speedLog 추가
       const speedLog = {
         id: `SPD-${Date.now()}`,
         detectedAt: new Date().toISOString(),
@@ -167,7 +181,6 @@ function startDummyData() {
 
     console.log('Dummy data sent:', dummyData);
     io.emit('arduino-data', dummyData);
-    // stats 업데이트 이벤트도 전송
     io.emit('stats-update', stats);
   }, intervalMs);
 }
@@ -176,21 +189,11 @@ function startDummyData() {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  // 클라이언트로부터 제어 명령 수신
+  // 클라이언트로부터 제어 명령 수신 (향후 ESP32 제어용)
   socket.on('control-bump', (command) => {
     console.log('Control command received:', command);
-    
-    if (serialPort && serialPort.isOpen) {
-      serialPort.write(command + '\n', (err) => {
-        if (err) {
-          console.error('Failed to write to serial port:', err.message);
-        } else {
-          console.log('Command sent to Arduino:', command);
-        }
-      });
-    } else {
-      console.log('Serial port not available, command ignored');
-    }
+    // TODO: WiFi를 통해 ESP32에 제어 명령 전송
+    // 예: HTTP 요청 또는 별도의 제어 엔드포인트 추가
   });
 
   socket.on('disconnect', () => {
@@ -201,15 +204,13 @@ io.on('connection', (socket) => {
 // 서버 시작
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
-  connectSerialPort();
+  console.log(`ESP32 데이터 수신 엔드포인트: POST http://localhost:${PORT}/api/esp32-data`);
+  // startDummyData(); // 필요시 테스트용 더미 데이터 활성화
 });
 
 // 서버 종료 시 정리
 process.on('SIGINT', () => {
   if (dummyInterval) clearInterval(dummyInterval);
-  if (serialPort && serialPort.isOpen) {
-    serialPort.close();
-  }
   server.close();
   console.log('Server closed');
   process.exit(0);

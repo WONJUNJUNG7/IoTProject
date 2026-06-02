@@ -28,6 +28,8 @@ const titleMap: Record<MenuKey, string> = {
   settings: '설정',
 };
 
+const ESP32_CAM_STREAM_URL = 'http://172.20.10.3/stream';
+
 export default function AdminDashboardPage() {
   const [active, setActive] = useState<MenuKey>('dashboard');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
@@ -259,14 +261,7 @@ export default function AdminDashboardPage() {
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   CCTV 모니터링 {selectedDevice ? `- ${selectedDevice.location}` : ''}
                 </h3>
-                {selectedDevice ? (
-                  <CCTVViewer streamUrls={[`http://example.com/stream/${selectedDevice.id}`]} />
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <p>📹</p>
-                    <p>장치를 선택하여 CCTV를 확인하세요.</p>
-                  </div>
-                )}
+                <CCTVViewer streamUrls={[ESP32_CAM_STREAM_URL, null]} />
               </div>
             </div>
             <EventLogSection logs={eventLogs} onAcknowledge={handleAcknowledge} />
@@ -283,7 +278,7 @@ export default function AdminDashboardPage() {
       case 'control':
         return <ControlPanelSection devices={devices} />;
       case 'cctv':
-        return <CCTVViewer />;
+        return <CCTVViewer streamUrls={[ESP32_CAM_STREAM_URL, null]} />;
       case 'settings':
         return (
           <div className="bg-white rounded-lg shadow-sm p-6 text-gray-500">
