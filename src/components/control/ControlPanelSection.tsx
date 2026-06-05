@@ -9,46 +9,52 @@ export default function ControlPanelSection({ devices }: Props) {
   const [selectedId, setSelectedId] = useState(devices[0]?.id ?? '');
   const [log, setLog] = useState<string[]>([]);
 
+  // 🌟 [중요] 아두이노 시리얼 모니터에 뜬 WiFi D1 보드의 실제 주소를 여기에 적어주세요!
+  const d1Url = 'http://172.20.10.4';
+  const apiUrl = 'http://localhost:4000';
+
   const append = (msg: string) => {
     const time = new Date().toLocaleTimeString();
     setLog((prev) => [`[${time}] ${msg}`, ...prev].slice(0, 20));
   };
 
-  // 각 mock 동작. 실제 IoT 연결 시 아래 주석 부분으로 교체.
-  const handleRaise = () => {
-    // TODO: POST /api/devices/{selectedId}/control { action: 'raise' }
-    append(`[${selectedId}] 방지턱 올리기 명령 전송 (mock)`);
-    alert('방지턱을 올리는 명령을 전송했습니다. (mock)');
+  // 🚀 방지턱 강제 올림 (UP) -> D1 보드로 'var=bump&val=1' 전송 (LED 켜기)
+  const handleRaise = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/bump?val=1`, { method: 'POST' });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      append(`[${selectedId}] D1 보드에 방지턱 올리기 (UP) 명령 전송 완료`);
+    } catch (err) {
+      console.error('D1 제어 에러:', err);
+      append(`[${selectedId}] 🚨 올리기 명령 전송 실패 (서버 또는 D1 보드 확인)`);
+    }
   };
-  const handleLower = () => {
-    // TODO: POST /api/devices/{selectedId}/control { action: 'lower' }
-    append(`[${selectedId}] 방지턱 내리기 명령 전송 (mock)`);
-    alert('방지턱을 내리는 명령을 전송했습니다. (mock)');
+
+  // 🚀 방지턱 강제 내림 (DOWN) -> 백엔드 프록시를 통해 D1 보드 제어
+  const handleLower = async () => {
+    try {
+      const response = await fetch(`${apiUrl}/api/bump?val=0`, { method: 'POST' });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      append(`[${selectedId}] D1 보드에 방지턱 내리기 (DOWN) 명령 전송 완료`);
+    } catch (err) {
+      console.error('D1 제어 에러:', err);
+      append(`[${selectedId}] 🚨 내리기 명령 전송 실패 (서버 또는 D1 보드 확인)`);
+    }
   };
-  const handleLed = () => {
-    // TODO: POST /api/devices/{selectedId}/control { action: 'led', color: 'red' }
-    append(`[${selectedId}] 경고 LED 점등 (mock)`);
-    alert('경고 LED를 켰습니다. (mock)');
-  };
-  const handleBuzzer = () => {
-    // TODO: POST /api/devices/{selectedId}/control { action: 'buzzer' }
-    append(`[${selectedId}] 부저 테스트 실행 (mock)`);
-    alert('부저 테스트를 실행했습니다. (mock)');
-  };
-  const handleRestart = () => {
-    // TODO: POST /api/devices/{selectedId}/restart
-    append(`[${selectedId}] 장치 재시작 (mock)`);
-    alert('장치를 재시작합니다. (mock)');
-  };
+
+  // 나머지 버튼들은 일단 기존 mock 동작 유지
+  const handleLed = () => { append(`[${selectedId}] 경고 LED 점등 (mock)`); };
+  const handleBuzzer = () => { append(`[${selectedId}] 부저 테스트 실행 (mock)`); };
+  const handleRestart = () => { append(`[${selectedId}] 장치 재시작 (mock)`); };
 
   return (
     <section className="bg-white/95 rounded-[32px] shadow-sm p-5 mb-6 border border-slate-200">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">제어 패널 (테스트)</h3>
+          <h3 className="text-lg font-semibold text-slate-900">제어 패널 (방지턱 실시간 연동)</h3>
           <p className="text-sm text-slate-500 mt-1">선택한 장치에 대해 빠른 명령을 전송할 수 있습니다.</p>
         </div>
-        <div className="text-sm text-slate-500">실제 API 연결 전에는 mock 동작으로 실행됩니다.</div>
+        <div className="text-sm text-green-600 font-medium">✓ WiFi D1 방지턱 제어 활성화</div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
@@ -68,10 +74,10 @@ export default function ControlPanelSection({ devices }: Props) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ControlButton color="blue" onClick={handleRaise}>
-              방지턱 올리기
+              방지턱 강제 올림 (UP)
             </ControlButton>
             <ControlButton color="green" onClick={handleLower}>
-              방지턱 내리기
+              방지턱 강제 내림 (DOWN)
             </ControlButton>
             <ControlButton color="red" onClick={handleLed}>
               경고 LED 켜기
@@ -84,8 +90,8 @@ export default function ControlPanelSection({ devices }: Props) {
             </ControlButton>
           </div>
 
-          <p className="text-xs text-gray-400 mt-3">
-            ※ 실제 IoT 장치 제어 API는 아직 연결되지 않았습니다. (mock 동작)
+          <p className="text-xs text-slate-400 mt-3">
+            ※ 타겟 D1 주소: <span className="font-semibold text-slate-600">{d1Url}</span>
           </p>
         </div>
 

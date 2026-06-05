@@ -47,10 +47,40 @@ app.get('/api/speed-logs', (req, res) => {
   res.json(speedLogs);
 });
 
+const D1_BOARD_URL = 'http://172.20.10.4';
+
+function getBumpValue(req) {
+  return req.query.val ?? req.body?.val;
+}
+
+async function forwardBumpToD1(val) {
+  const targetUrl = `${D1_BOARD_URL}/control?var=bump&val=${val}`;
+  console.log('D1 bump proxy forwarding:', targetUrl);
+  const response = await fetch(targetUrl);
+  const text = await response.text();
+  console.log('D1 bump proxy response status:', response.status, 'body:', text);
+  return { response, text, targetUrl };
+}
+
 app.get('/api/stats', (req, res) => {
   // 평균 속도 계산 (최근 로그 기반)
   const avgSpeed = speedLogs.length === 0 ? 0 : Math.round(speedLogs.reduce((sum, s) => sum + (s.measuredSpeed || 0), 0) / speedLogs.length);
   res.json({ ...stats, avgSpeed });
+});
+
+app.all('/api/bump', async (req, res) => {
+  const val = String(getBumpValue(req) ?? '');
+  if (val !== '0' && val !== '1') {
+    return res.status(400).json({ error: 'val query parameter must be 0 or 1' });
+  }
+
+  try {
+    const { response, text, targetUrl } = await forwardBumpToD1(val);
+    return res.json({ success: true, forwardedTo: targetUrl, status: response.status, response: text });
+  } catch (error) {
+    console.error('D1 bump proxy error:', error);
+    return res.status(502).json({ error: 'D1 보드로 명령 전송 중 오류가 발생했습니다.' });
+  }
 });
 
 const PORT = 4000;
@@ -189,11 +219,25 @@ function startDummyData() {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
-  // 클라이언트로부터 제어 명령 수신 (향후 ESP32 제어용)
-  socket.on('control-bump', (command) => {
+  // 클라이언트로부터 제어 명령 수신 (ESP32 또는 D1 제어용)
+  socket.on('control-bump', async (command) => {
     console.log('Control command received:', command);
-    // TODO: WiFi를 통해 ESP32에 제어 명령 전송
-    // 예: HTTP 요청 또는 별도의 제어 엔드포인트 추가
+    const val = command === 'UP' ? '1' : command === 'DOWN' ? '0' : null;
+    if (!val) {
+      console.warn('Unknown control command:', command);
+      return;
+    }
+
+    const targetUrl = `${D1_BOARD_URL}/control?var=bump&val=${val}`;
+    try {
+      const response = await fetch(targetUrl);
+      const text = await response.text();
+      console.log(`Forwarded bump command to D1 board: ${targetUrl}`, text);
+      socket.emit('control-bump-result', { success: true, command, targetUrl, response: text });
+    } catch (err) {
+      console.error('D1 bump proxy error:', err);
+      socket.emit('control-bump-result', { success: false, command, targetUrl, error: err?.message ?? 'unknown' });
+    }
   });
 
   socket.on('disconnect', () => {

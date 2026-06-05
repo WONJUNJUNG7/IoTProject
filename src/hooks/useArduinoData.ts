@@ -103,12 +103,20 @@ export function useArduinoData() {
         setError(`연결 오류: ${err.message}`);
       });
 
+      socket.on('control-bump-result', (result) => {
+        console.log('Control bump result:', result);
+        if (!result?.success) {
+          setError(`제어 실패: ${result?.error ?? '알 수 없는 오류'}`);
+        }
+      });
+
       return () => {
         socket.off('connect');
         socket.off('arduino-data');
         socket.off('stats-update');
         socket.off('disconnect');
         socket.off('connect_error');
+        socket.off('control-bump-result');
         socket.disconnect();
         socketRef.current = null;
       };
