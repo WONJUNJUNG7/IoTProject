@@ -25,7 +25,7 @@ export default function DashboardDeviceList({ devices, onSelect, selectedDevice 
   }, [devices, search, filter]);
 
   return (
-    <section className="bg-white/95 rounded-[28px] shadow-sm p-5 h-full border border-slate-200">
+    <section className="bg-white/95 rounded-[28px] shadow-sm p-5 border border-slate-200 max-h-[38rem]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">실시간 방지턱 상태</h3>

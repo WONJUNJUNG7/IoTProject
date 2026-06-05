@@ -135,7 +135,7 @@ export default function AdminDashboardPage() {
     operating: serverStats?.operating ?? stats.operating,
     todayDetected: serverStats?.todayDetected ?? stats.todayDetected,
     overSpeed: serverStats?.overSpeed ?? stats.overSpeed,
-    // 서버에서 평균속도를 내려주면 사용하고, 없으면 로컬 계산값 사용
+    currentSpeed: arduinoData.speed,
     avgSpeed: (serverStats as any)?.avgSpeed ?? stats.avgSpeed,
   };
 
@@ -145,49 +145,11 @@ export default function AdminDashboardPage() {
       case 'dashboard':
         return (
           <>
-            <div className="bg-white/95 border border-slate-200 rounded-[32px] shadow-sm p-6 mb-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-            <div>
-              <p className="text-sm text-slate-500">실시간 운영 정보</p>
-              <h3 className="text-2xl font-semibold text-slate-900 mt-1">
-                오늘의 시스템 현황을 한눈에 확인하세요.
-              </h3>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
-              <div className="rounded-3xl bg-slate-950 text-white p-4">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-300">
-                  미확인 이벤트
-                </p>
-                <p className="mt-3 text-2xl font-semibold">{unreadCount}건</p>
-              </div>
-              <div className="rounded-3xl bg-emerald-600 text-white p-4">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-100/80">
-                  전체 장치
-                </p>
-                <p className="mt-3 text-2xl font-semibold">{display.total}대</p>
-              </div>
-              <div className="rounded-3xl bg-amber-500 text-slate-950 p-4">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-950/80">
-                  평균 속도
-                </p>
-                <p className="mt-3 text-2xl font-semibold">{display.avgSpeed} km/h</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              <StatCard label="전체 설치 방지턱" value={display.total} unit="대" accent="blue" icon="🚧" />
-              <StatCard label="정상 작동 장치" value={display.operating} unit="대" accent="green" icon="✅" />
-              <StatCard label="오늘 감지된 차량" value={display.todayDetected} unit="대" accent="blue" icon="🚗" />
-              <StatCard label="오늘 과속 감지" value={display.overSpeed} unit="건" accent="red" icon="⚠️" />
-              <StatCard label="장치 오류 발생" value={stats.errors} unit="건" accent="red" icon="🛠️" />
-              <StatCard label="평균 차량 속도" value={stats.avgSpeed} unit="km/h" accent="yellow" icon="📈" />
-            </div>            {/* 아두이노 실시간 데이터 섹션 */}
             <div className="bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-[24px] shadow-sm p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">📡 실시간 센서 데이터</h3>
-                  <p className="text-sm text-slate-500 mt-1">Socket.io로 수신 중인 아두이노 센서 데이터</p>
+                  <p className="text-sm text-slate-500 mt-1">Socket.io로 수신 중인 아두이노 센서 데이터를 확인하세요.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
@@ -222,7 +184,9 @@ export default function AdminDashboardPage() {
                   <p className="text-3xl font-bold text-blue-900 mt-2">{arduinoData.humidity.toFixed(1)}</p>
                   <p className="text-xs text-slate-500 mt-1">%</p>
                 </div>
-              </div>            {/* 방지턱 원격 제어 섹션 */}
+              </div>
+            </div>
+
             <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-300 rounded-[24px] shadow-sm p-6 mb-6">
               <div className="mb-5">
                 <h3 className="text-lg font-semibold text-slate-900">🎮 방지턱 원격 제어</h3>
@@ -251,19 +215,35 @@ export default function AdminDashboardPage() {
                   <span>방지턱 강제 내림 (DOWN)</span>
                 </button>
               </div>
-            </div>            </div>            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <DashboardDeviceList
-                devices={devices}
-                onSelect={setSelectedDevice}
-                selectedDevice={selectedDevice}
-              />
-              <div className="bg-white rounded-lg shadow-sm p-5">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  CCTV 모니터링 {selectedDevice ? `- ${selectedDevice.location}` : ''}
-                </h3>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-6 mb-6">
+              <div className="bg-white/95 rounded-[28px] shadow-sm p-5 border border-slate-200">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-slate-900">요약 통계</h3>
+                  <p className="text-sm text-slate-500 mt-1">주요 지표를 2열 3행으로 정리했습니다.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <StatCard label="전체 설치 방지턱" value={display.total} unit="대" accent="blue" icon="🚧" />
+                  <StatCard label="정상 작동 장치" value={display.operating} unit="대" accent="green" icon="✅" />
+                  <StatCard label="오늘 감지된 차량" value={display.todayDetected} unit="대" accent="blue" icon="🚗" />
+                  <StatCard label="오늘 과속 감지" value={display.overSpeed} unit="건" accent="red" icon="⚠️" />
+                  <StatCard label="현재 차량 속도" value={display.currentSpeed.toFixed(1)} unit="km/h" accent="green" icon="🏎️" />
+                  <StatCard label="평균 차량 속도" value={display.avgSpeed} unit="km/h" accent="yellow" icon="📈" />
+                </div>
+              </div>
+
+              <div>
                 <CCTVViewer streamUrls={[ESP32_CAM_STREAM_URL, null]} />
               </div>
             </div>
+
+            <DashboardDeviceList
+              devices={devices}
+              onSelect={setSelectedDevice}
+              selectedDevice={selectedDevice}
+            />
+
             <EventLogSection logs={eventLogs} onAcknowledge={handleAcknowledge} />
           </>
         );
