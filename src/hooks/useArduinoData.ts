@@ -14,6 +14,10 @@ export function useArduinoData() {
     humidity: 0,
   });
 
+  const [shockCount, setShockCount] = useState<number>(0);
+  const shockActiveRef = useRef(false);
+  const SHOCK_THRESHOLD = 400;
+
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<{ totalDevices: number; operating: number; todayDetected: number; overSpeed: number } | null>(null);
@@ -48,6 +52,14 @@ export function useArduinoData() {
           // 데이터 파싱: "SPEED:50,SHOCK:12,TEMP:24,HUMI:60"
           const parsed = parseArduinoData(data);
           setArduinoData(parsed);
+
+          // 충격 임계값 카운트: 400 이상에서 상승 엣지 감지 시만 +1
+          const isShockAbove = parsed.shock >= SHOCK_THRESHOLD;
+          if (isShockAbove && !shockActiveRef.current) {
+            setShockCount((prev) => prev + 1);
+          }
+          shockActiveRef.current = isShockAbove;
+
           // 실시간 평균 속도 갱신: 0은 차량 미검출로 판단하여 제외
           const sp = parsed.speed;
           if (!isNaN(sp)) {
@@ -166,6 +178,7 @@ export function useArduinoData() {
 
   return {
     arduinoData,
+    shockCount,
     isConnected,
     error,
     controlBump,

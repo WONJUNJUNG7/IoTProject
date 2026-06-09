@@ -46,11 +46,18 @@ let currentStatus = 'READY';
 const SPEED_LIMIT_CM_S = 50.0; 
 
 // 🔌 아두이노 시리얼 포트 경로: D1 WiFi만 사용할 때는 비워두거나 환경 변수로 설정하세요.
-const SERIAL_PORT_PATH = process.env.SERIAL_PORT_PATH || null;
+const SERIAL_PORT_PATH = process.env.SERIAL_PORT_PATH || "COM3";
+const ENABLE_USB_SERIAL = process.env.ENABLE_USB_SERIAL !== 'false';
 let arduinoPort = null;
 let parser = null;
+// 마지막으로 콘솔에 출력한 시간(밀리초)
+let lastConsoleLogTime = 0;
+// 감지 중복 방지 쿨다운(ms): 같은 차량의 연속 측정을 하나로 처리하기 위해 사용
+// 기본값을 5000ms(5초)로 설정
+const DETECTION_COOLDOWN_MS = parseInt(process.env.DETECTION_COOLDOWN_MS || '5000', 10);
+let lastDetectionTime = 0;
 
-if (SERIAL_PORT_PATH) {
+if (ENABLE_USB_SERIAL && SERIAL_PORT_PATH) {
   try {
     arduinoPort = new SerialPort({ path: SERIAL_PORT_PATH, baudRate: 9600, autoOpen: false });
     parser = arduinoPort.pipe(new ReadlineParser({ delimiter: '\r\n' }));
@@ -68,6 +75,8 @@ if (SERIAL_PORT_PATH) {
     arduinoPort = null;
     parser = null;
   }
+} else if (!ENABLE_USB_SERIAL) {
+  console.log('ℹ️ USB 시리얼 제어가 비활성화되어 있습니다. D1 WiFi 경로만 사용합니다.');
 } else {
   console.log('ℹ️ SERIAL_PORT_PATH가 설정되지 않아 아두이노 시리얼 연결을 생략합니다.');
 }
@@ -95,42 +104,52 @@ if (parser) {
 
         // 리액트 웹 대시보드용 데이터 포맷 규격 조립
         const formattedData = `SPEED:${validSpeed},SHOCK:${currentShock},TEMP:${currentTemp},HUMI:${currentHumi}`;
-        console.log('🖥️ 웹사이트로 전달할 데이터:', formattedData);
         
-        // 리액트로 실시간 전송!
+        // 리액트로 실시간 전송 (항상 전송)
         io.emit('arduino-data', formattedData);
+
+        // VSCode 터미널에는 5초에 한 번만 출력하도록 제한
+        const now = Date.now();
+        if (now - lastConsoleLogTime >= 5000) {
+          console.log('🖥️ 웹사이트로 전달할 데이터:', formattedData);
+          lastConsoleLogTime = now;
+        }
 
         // --- 리액트 REST API 대시보드 내부 데이터 가공 로직 ---
         lastMeasuredSpeed = validSpeed;
         
         // 의미 있는 속도(움직임)가 감지되었을 때 로그 기록
-        if (validSpeed > 10.0) { 
-          stats.todayDetected += 1;
-          const speedLog = {
-            id: `SPD-${Date.now()}`,
-            detectedAt: new Date().toISOString(),
-            location: '아두이노 메가 센서',
-            measuredSpeed: validSpeed,
-            speedLimit: SPEED_LIMIT_CM_S, // 아두이노 기준인 50 cm/s로 일치
-            judgment: isOverSpeed ? '과속' : validSpeed > 20.0 ? '주의' : '정상',
-            bumpAction: isOverSpeed ? '경고 발생' : '유지',
-          };
-          speedLogs.unshift(speedLog);
-          if (speedLogs.length > 100) speedLogs.pop();
-
-          if (isOverSpeed) {
-            stats.overSpeed += 1;
-            const evt = {
-              id: `EVT-${Date.now()}`,
-              occurredAt: new Date().toISOString(),
-              deviceId: 'BUMP-001',
+        if (validSpeed > 10.0) {
+          // 중복 감지 방지: 마지막 감지 이후 일정 시간(쿨다운) 경과 시만 카운트
+          if (now - lastDetectionTime >= DETECTION_COOLDOWN_MS) {
+            lastDetectionTime = now;
+            stats.todayDetected += 1;
+            const speedLog = {
+              id: `SPD-${Date.now()}`,
+              detectedAt: new Date().toISOString(),
               location: '아두이노 메가 센서',
-              eventType: '과속 감지',
-              severity: '높음',
-              status: '미확인',
+              measuredSpeed: validSpeed,
+              speedLimit: SPEED_LIMIT_CM_S, // 아두이노 기준인 50 cm/s로 일치
+              judgment: isOverSpeed ? '과속' : validSpeed > 20.0 ? '주의' : '정상',
+              bumpAction: isOverSpeed ? '경고 발생' : '유지',
             };
-            eventLogs.unshift(evt);
-            if (eventLogs.length > 100) eventLogs.pop();
+            speedLogs.unshift(speedLog);
+            if (speedLogs.length > 100) speedLogs.pop();
+
+            if (isOverSpeed) {
+              stats.overSpeed += 1;
+              const evt = {
+                id: `EVT-${Date.now()}`,
+                occurredAt: new Date().toISOString(),
+                deviceId: 'BUMP-001',
+                location: '아두이노 메가 센서',
+                eventType: '과속 감지',
+                severity: '높음',
+                status: '미확인',
+              };
+              eventLogs.unshift(evt);
+              if (eventLogs.length > 100) eventLogs.pop();
+            }
           }
         }
 
@@ -203,9 +222,11 @@ app.post('/api/bump', async (req, res) => {
   }
 
   try {
-    if (arduinoPort && arduinoPort.isOpen) {
+    if (ENABLE_USB_SERIAL && arduinoPort && arduinoPort.isOpen) {
       arduinoPort.write(command + '\n');
       console.log(`🔌 [REST] 아두이노 메가 시리얼 명령 전송: ${command}`);
+    } else if (!ENABLE_USB_SERIAL) {
+      console.log('ℹ️ USB 시리얼 제어가 비활성화되어 있어 아두이노 시리얼은 건너뜁니다.');
     }
 
     const d1Path = `/servo?angle=${angle}`;
@@ -233,14 +254,33 @@ app.get('/api/servo', async (req, res) => {
     return res.status(400).json({ success: false, message: 'angle 쿼리는 0~180 사이 정수여야 합니다.' });
   }
 
+  const results = [];
+
+  try {
+    if (ENABLE_USB_SERIAL && arduinoPort && arduinoPort.isOpen) {
+      const cmd = `ANGLE=${angle}\n`;
+      arduinoPort.write(cmd);
+      console.log(`🔌 [REST] USB(COM3)로 각도 명령 전송: ${cmd.trim()}`);
+      results.push('USB OK');
+    } else if (!ENABLE_USB_SERIAL) {
+      results.push('USB DISABLED');
+      console.log('ℹ️ USB 시리얼 제어가 비활성화되어 있어 USB 각도 전송은 건너뜁니다.');
+    } else {
+      results.push('USB SKIPPED');
+    }
+  } catch (err) {
+    console.error('❌ [REST] USB(COM3) 각도 전송 중 오류 발생:', err.message);
+    results.push('USB FAIL');
+  }
+
   try {
     const d1Path = `/servo?angle=${angle}`;
     console.log(`🌐 [REST] Wemos D1 보드로 서보 각도 전송 중... -> ${D1_TARGET_URL}${d1Path}`);
     await axios.get(`${D1_TARGET_URL}${d1Path}`);
     console.log(`📬 [REST] Wemos D1 서보 각도 ${angle} 전달 완료!`);
-    res.json({ success: true, message: `서보 각도 ${angle}도로 설정되었습니다.` });
+    results.push('WIFI OK');
   } catch (error) {
-    console.error('❌ [REST] 서보 각도 전송 중 오류 발생:', error.message);
+    console.error('❌ [REST] D1 서보 각도 전송 중 오류 발생:', error.message);
     if (error.response) {
       console.error('   response status:', error.response.status);
       console.error('   response data:', error.response.data);
@@ -248,8 +288,15 @@ app.get('/api/servo', async (req, res) => {
     if (error.code) {
       console.error('   error code:', error.code);
     }
-    res.status(500).json({ success: false, message: 'D1 보드 연결 상태를 확인하세요.' });
+    results.push('WIFI FAIL');
   }
+
+  const success = results.some((value) => value.endsWith('OK'));
+  if (!success) {
+    return res.status(500).json({ success: false, message: 'USB와 WiFi 모두 실패했습니다.', detail: results });
+  }
+
+  res.json({ success: true, message: `서보 각도 ${angle}도로 설정되었습니다.`, detail: results });
 });
 
 // ====================================================================

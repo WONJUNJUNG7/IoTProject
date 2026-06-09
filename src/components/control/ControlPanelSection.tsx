@@ -7,6 +7,7 @@ interface Props {
 
 export default function ControlPanelSection({ devices }: Props) {
   const [selectedId, setSelectedId] = useState(devices[0]?.id ?? '');
+  const [angle, setAngle] = useState<number>(90);
   const [log, setLog] = useState<string[]>([]);
 
   // 🌟 D1 보드가 연결을 시도하는 백엔드 서버의 주소 (정보 제공용)
@@ -41,6 +42,18 @@ export default function ControlPanelSection({ devices }: Props) {
     } catch (err) {
       console.error('D1 제어 에러:', err);
       append(`[${selectedId}] 🚨 내리기 명령 전송 실패 (서버 터미널 확인 필요)`);
+    }
+  };
+
+  const handleSetAngle = async () => {
+    try {
+      const constrained = Math.max(0, Math.min(180, angle));
+      const response = await fetch(`${apiUrl}/api/servo?angle=${constrained}`);
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      append(`[${selectedId}] 각도 ${constrained}도 전송 완료`);
+    } catch (err) {
+      console.error('D1 각도 제어 에러:', err);
+      append(`[${selectedId}] 🚨 각도 명령 전송 실패 (서버 터미널 확인 필요)`);
     }
   };
 
@@ -82,15 +95,40 @@ export default function ControlPanelSection({ devices }: Props) {
             <ControlButton color="green" onClick={handleLower}>
               방지턱 강제 내림 (DOWN)
             </ControlButton>
+            <ControlButton color="blue" onClick={handleSetAngle}>
+              각도 전송 ({angle}°)
+            </ControlButton>
             <ControlButton color="red" onClick={handleLed}>
               경고 LED 켜기
             </ControlButton>
             <ControlButton color="yellow" onClick={handleBuzzer}>
-              부저 테스트
+              부저 테스트 실행
             </ControlButton>
             <ControlButton color="gray" onClick={handleRestart}>
               장치 재시작
             </ControlButton>
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm text-slate-600 mb-2">서보 각도 설정</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={180}
+                value={angle}
+                onChange={(e) => setAngle(Number(e.target.value))}
+                className="w-28 border border-slate-300 rounded-2xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <input
+                type="range"
+                min={0}
+                max={180}
+                value={angle}
+                onChange={(e) => setAngle(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-2">0~180 사이 값을 입력한 뒤 '각도 전송'을 눌러 주세요.</p>
           </div>
 
           <p className="text-xs text-slate-400 mt-3">

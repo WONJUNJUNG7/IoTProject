@@ -37,7 +37,7 @@ export default function AdminDashboardPage() {
   const [eventLogs, setEventLogs] = useState<EventLog[]>([]);
 
   // 아두이노 실시간 데이터
-  const { arduinoData, isConnected, error, controlBump, stats: serverStats } = useArduinoData();
+  const { arduinoData, shockCount, isConnected, error, controlBump, stats: serverStats } = useArduinoData();
 
   // 실제 API가 있으면 fetch하고, 실패 시 최소값으로 보여줌
   const minimalDevices: Device[] = [
@@ -170,9 +170,9 @@ export default function AdminDashboardPage() {
                   <p className="text-xs text-slate-500 mt-1">km/h</p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-orange-200">
-                  <p className="text-xs uppercase tracking-wider text-orange-600 font-semibold">충격</p>
-                  <p className="text-3xl font-bold text-orange-900 mt-2">{arduinoData.shock.toFixed(1)}</p>
-                  <p className="text-xs text-slate-500 mt-1">G</p>
+                  <p className="text-xs uppercase tracking-wider text-orange-600 font-semibold">충격 감지 횟수</p>
+                  <p className="text-3xl font-bold text-orange-900 mt-2">{shockCount}</p>
+                  <p className="text-xs text-slate-500 mt-1">400 이상일 때 카운트</p>
                 </div>
                 <div className="bg-white rounded-lg p-4 border border-red-200">
                   <p className="text-xs uppercase tracking-wider text-red-600 font-semibold">온도</p>
