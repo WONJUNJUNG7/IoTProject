@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import io, { Socket } from 'socket.io-client';
 import { ArduinoData } from '../types';
 
-const SOCKET_SERVER_URL = 'http://localhost:4000';
+const SOCKET_SERVER_URL = typeof window !== 'undefined'
+  ? `${window.location.protocol}//${window.location.hostname}:4000`
+  : 'http://localhost:4000';
 
 export function useArduinoData() {
   const [arduinoData, setArduinoData] = useState<ArduinoData>({

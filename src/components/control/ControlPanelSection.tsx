@@ -9,40 +9,42 @@ export default function ControlPanelSection({ devices }: Props) {
   const [selectedId, setSelectedId] = useState(devices[0]?.id ?? '');
   const [log, setLog] = useState<string[]>([]);
 
-  // 🌟 [중요] 아두이노 시리얼 모니터에 뜬 WiFi D1 보드의 실제 주소를 여기에 적어주세요!
-  const d1Url = 'http://172.20.10.4';
-  const apiUrl = 'http://localhost:4000';
+  // 🌟 D1 보드가 연결을 시도하는 백엔드 서버의 주소 (정보 제공용)
+  // 실제 D1 보드 펌웨어의 SERVER_URL과 일치해야 합니다.
+  const apiUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:4000`
+    : 'http://localhost:4000';
 
   const append = (msg: string) => {
     const time = new Date().toLocaleTimeString();
     setLog((prev) => [`[${time}] ${msg}`, ...prev].slice(0, 20));
   };
 
-  // 🚀 방지턱 강제 올림 (UP) -> D1 보드로 'var=bump&val=1' 전송 (LED 켜기)
+  // 🚀 [올림 버튼용] 백엔드 REST API(/api/bump?val=1) 호출
   const handleRaise = async () => {
     try {
       const response = await fetch(`${apiUrl}/api/bump?val=1`, { method: 'POST' });
       if (!response.ok) throw new Error(`status ${response.status}`);
-      append(`[${selectedId}] D1 보드에 방지턱 올리기 (UP) 명령 전송 완료`);
+      append(`[${selectedId}] 백엔드 서버(${apiUrl})를 통해 방지턱 올리기 (UP) 명령 완료`);
     } catch (err) {
       console.error('D1 제어 에러:', err);
-      append(`[${selectedId}] 🚨 올리기 명령 전송 실패 (서버 또는 D1 보드 확인)`);
+      append(`[${selectedId}] 🚨 올리기 명령 전송 실패 (서버 터미널 확인 필요)`);
     }
   };
 
-  // 🚀 방지턱 강제 내림 (DOWN) -> 백엔드 프록시를 통해 D1 보드 제어
+  // 🚀 [내림 버튼용] 백엔드 REST API(/api/bump?val=0) 호출
   const handleLower = async () => {
     try {
       const response = await fetch(`${apiUrl}/api/bump?val=0`, { method: 'POST' });
       if (!response.ok) throw new Error(`status ${response.status}`);
-      append(`[${selectedId}] D1 보드에 방지턱 내리기 (DOWN) 명령 전송 완료`);
+      append(`[${selectedId}] 백엔드 서버(${apiUrl})를 통해 방지턱 내리기 (DOWN) 명령 완료`);
     } catch (err) {
       console.error('D1 제어 에러:', err);
-      append(`[${selectedId}] 🚨 내리기 명령 전송 실패 (서버 또는 D1 보드 확인)`);
+      append(`[${selectedId}] 🚨 내리기 명령 전송 실패 (서버 터미널 확인 필요)`);
     }
   };
 
-  // 나머지 버튼들은 일단 기존 mock 동작 유지
+  // 나머지 버튼들 (기존 mock 유지)
   const handleLed = () => { append(`[${selectedId}] 경고 LED 점등 (mock)`); };
   const handleBuzzer = () => { append(`[${selectedId}] 부저 테스트 실행 (mock)`); };
   const handleRestart = () => { append(`[${selectedId}] 장치 재시작 (mock)`); };
@@ -72,6 +74,7 @@ export default function ControlPanelSection({ devices }: Props) {
             ))}
           </select>
 
+          {/* 🌟 중요:onClick 버튼에 handleRaise와 handleLower가 확실히 물리도록 바인딩 완료 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ControlButton color="blue" onClick={handleRaise}>
               방지턱 강제 올림 (UP)
@@ -91,7 +94,7 @@ export default function ControlPanelSection({ devices }: Props) {
           </div>
 
           <p className="text-xs text-slate-400 mt-3">
-            ※ 타겟 D1 주소: <span className="font-semibold text-slate-600">{d1Url}</span>
+            ※ D1 보드 연결 대상 서버 주소: <span className="font-semibold text-slate-600">{apiUrl}</span>
           </p>
         </div>
 
@@ -120,17 +123,14 @@ function ControlButton({
   children: React.ReactNode;
 }) {
   const cls: Record<string, string> = {
-    blue: 'bg-blue-600 hover:bg-blue-700 text-white',
-    green: 'bg-green-600 hover:bg-green-700 text-white',
-    red: 'bg-red-600 hover:bg-red-700 text-white',
-    yellow: 'bg-yellow-500 hover:bg-yellow-600 text-white',
-    gray: 'bg-slate-600 hover:bg-slate-700 text-white',
+    blue: 'bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded-md text-sm font-medium',
+    green: 'bg-green-600 hover:bg-green-700 text-white w-full py-2 rounded-md text-sm font-medium',
+    red: 'bg-red-600 hover:bg-red-700 text-white w-full py-2 rounded-md text-sm font-medium',
+    yellow: 'bg-yellow-500 hover:bg-yellow-600 text-white w-full py-2 rounded-md text-sm font-medium',
+    gray: 'bg-slate-600 hover:bg-slate-700 text-white w-full py-2 rounded-md text-sm font-medium',
   };
   return (
-    <button
-      onClick={onClick}
-      className={`py-2 rounded-md text-sm font-medium ${cls[color]}`}
-    >
+    <button onClick={onClick} className={cls[color]}>
       {children}
     </button>
   );
